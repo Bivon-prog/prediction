@@ -1,0 +1,39 @@
+[package]
+name = "betsure-backend"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "cron_job"
+path = "src/bin/cron_job.rs"
+
+[[bin]]
+name = "seed_db"
+path = "src/bin/seed_db.rs"
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+mongodb = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+thiserror = "2"
+jsonwebtoken = "9"
+bcrypt = "0.15"
+base64 = "0.22"
+statrs = "0.17"
+futures = "0.3"
+env_logger = "0.11"
+log = "0.4"
+rand = "0.8"

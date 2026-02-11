@@ -1,0 +1,25 @@
+# Rust
+/backend/target/
+/backend/Cargo.lock
+/backend/.env
+
+# Next.js
+/frontend/.next/
+/frontend/out/
+/frontend/node_modules/
+/frontend/.env.local
+/frontend/.env.production.local
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+
+# OS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
