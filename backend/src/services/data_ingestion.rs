@@ -7,56 +7,82 @@ use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct FootballDataResponse {
-    matches: Vec<FootballMatch>,
+struct SportmonksResponse {
+    data: Vec<SportmonksFixture>,
 }
 
 #[derive(Debug, Deserialize)]
-struct FootballMatch {
+struct SportmonksFixture {
     id: i32,
-    utcDate: String,
-    #[serde(rename = "homeTeam")]
-    home_team: FootballTeam,
-    #[serde(rename = "awayTeam")]
-    away_team: FootballTeam,
-    competition: Competition,
+    starting_at: String,
+    participants: Vec<Participant>,
+    league: LeagueInfo,
 }
 
 #[derive(Debug, Deserialize)]
-struct FootballTeam {
+struct Participant {
     id: i32,
     name: String,
+    meta: ParticipantMeta,
 }
 
 #[derive(Debug, Deserialize)]
-struct Competition {
+struct ParticipantMeta {
+    location: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LeagueInfo {
     name: String,
 }
 
 pub async fn fetch_todays_fixtures(config: &Config) -> Result<Vec<Match>, Box<dyn std::error::Error>> {
     let client = Client::new();
     
-    // Use football-data.org API
-    let url = "https://api.football-data.org/v4/matches";
+    // Get today's date
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    
+    // Sportmonks API endpoint for fixtures
+    let url = format!("{}/fixtures?api_token={}&filters=fixtureDate:{}", 
+        config.api_football_base_url, 
+        config.api_football_key,
+        today
+    );
+    
+    println!("📡 Fetching fixtures from Sportmonks API...");
     
     let response = client
-        .get(url)
-        .header("X-Auth-Token", &config.api_football_key)
+        .get(&url)
         .send()
         .await?;
 
     if !response.status().is_success() {
-        return Err(format!("API returned status: {}", response.status()).into());
+        let status = response.status();
+        let error_text = response.text().await?;
+        return Err(format!("API returned status {}: {}", status, error_text).into());
     }
 
-    let data = response.json::<FootballDataResponse>().await?;
+    let data = response.json::<SportmonksResponse>().await?;
+    
+    println!("✅ Received {} fixtures from API", data.data.len());
 
     let mut matches = Vec::new();
 
-    for fixture in data.matches {
-        // Generate realistic team statistics based on team names
-        let (home_goals_avg, home_conceded_avg) = generate_team_stats(&fixture.home_team.name);
-        let (away_goals_avg, away_conceded_avg) = generate_team_stats(&fixture.away_team.name);
+    for fixture in data.data.iter().take(10) { // Limit to 10 matches
+        if fixture.participants.len() < 2 {
+            continue;
+        }
+
+        // Determine home and away teams
+        let (home_team, away_team) = if fixture.participants[0].meta.location == "home" {
+            (&fixture.participants[0], &fixture.participants[1])
+        } else {
+            (&fixture.participants[1], &fixture.participants[0])
+        };
+
+        // Generate realistic team statistics
+        let (home_goals_avg, home_conceded_avg) = generate_team_stats(&home_team.name);
+        let (away_goals_avg, away_conceded_avg) = generate_team_stats(&away_team.name);
 
         let (home_attack, home_defense, away_attack, away_defense) = calculate_team_strengths(
             home_goals_avg,
@@ -65,34 +91,34 @@ pub async fn fetch_todays_fixtures(config: &Config) -> Result<Vec<Match>, Box<dy
             away_conceded_avg,
         );
 
-        let home_team = TeamStats {
-            team_id: fixture.home_team.id,
-            team_name: fixture.home_team.name,
+        let home_team_stats = TeamStats {
+            team_id: home_team.id,
+            team_name: home_team.name.clone(),
             goals_scored_avg: home_goals_avg,
             goals_conceded_avg: home_conceded_avg,
             attack_strength: home_attack,
             defense_strength: home_defense,
         };
 
-        let away_team = TeamStats {
-            team_id: fixture.away_team.id,
-            team_name: fixture.away_team.name,
+        let away_team_stats = TeamStats {
+            team_id: away_team.id,
+            team_name: away_team.name.clone(),
             goals_scored_avg: away_goals_avg,
             goals_conceded_avg: away_conceded_avg,
             attack_strength: away_attack,
             defense_strength: away_defense,
         };
 
-        let match_date = DateTime::parse_from_rfc3339(&fixture.utcDate)?
+        let match_date = DateTime::parse_from_rfc3339(&fixture.starting_at)?
             .with_timezone(&Utc);
 
         let mut match_data = Match {
             id: None,
             fixture_id: fixture.id,
-            home_team,
-            away_team,
+            home_team: home_team_stats,
+            away_team: away_team_stats,
             match_date,
-            league: fixture.competition.name,
+            league: fixture.league.name.clone(),
             prediction: None,
             created_at: Utc::now(),
         };
@@ -108,29 +134,41 @@ pub async fn fetch_todays_fixtures(config: &Config) -> Result<Vec<Match>, Box<dy
 
 // Generate realistic team statistics based on team quality
 fn generate_team_stats(team_name: &str) -> (f64, f64) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
     // Top tier teams
     let top_teams = [
-        "Manchester City", "Liverpool", "Bayern Munich", "Real Madrid", 
+        "Manchester City", "Liverpool", "Bayern", "Real Madrid", 
         "Barcelona", "Paris Saint-Germain", "Arsenal", "Inter"
     ];
     
     // Good teams
     let good_teams = [
         "Manchester United", "Chelsea", "Tottenham", "Newcastle",
-        "Atletico Madrid", "Borussia Dortmund", "AC Milan", "Juventus"
+        "Atletico", "Dortmund", "Milan", "Juventus"
     ];
 
+    // Use team name hash for consistent but varied stats
+    let mut hasher = DefaultHasher::new();
+    team_name.hash(&mut hasher);
+    let hash = hasher.finish();
+    let variation = (hash % 100) as f64 / 100.0;
+
     if top_teams.iter().any(|&t| team_name.contains(t)) {
-        (2.5 + (rand::random::<f64>() * 0.5), 0.8 + (rand::random::<f64>() * 0.3))
+        (2.3 + (variation * 0.7), 0.7 + (variation * 0.4))
     } else if good_teams.iter().any(|&t| team_name.contains(t)) {
-        (1.8 + (rand::random::<f64>() * 0.5), 1.1 + (rand::random::<f64>() * 0.4))
+        (1.7 + (variation * 0.6), 1.0 + (variation * 0.5))
     } else {
-        (1.3 + (rand::random::<f64>() * 0.6), 1.2 + (rand::random::<f64>() * 0.5))
+        (1.2 + (variation * 0.8), 1.1 + (variation * 0.7))
     }
 }
 
 pub async fn save_matches_to_db(db: &Database, matches: Vec<Match>) -> Result<(), mongodb::error::Error> {
     let collection = db.collection::<Match>("matches");
+    
+    // Clear existing matches first
+    collection.drop().await?;
     
     for match_data in matches {
         collection.insert_one(match_data).await?;

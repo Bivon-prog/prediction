@@ -9,7 +9,9 @@ export default function Home() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [userId] = useState('698c9583decc45e02ed47b1c');
+  const [userId] = useState('699c6e55087f7b4879786c24');
+  const [viewMode, setViewMode] = useState<'free' | 'vip'>('free');
+  const [dateFilter, setDateFilter] = useState<'today' | 'tomorrow'>('today');
 
   const loadMatches = async () => {
     setLoading(true);
@@ -27,6 +29,43 @@ export default function Home() {
     loadMatches();
   }, []);
 
+  // Filter matches based on view mode and date
+  const filteredMatches = matches.filter(match => {
+    const matchDate = new Date(match.match_date);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Check if match is today or tomorrow
+    const isToday = matchDate.toDateString() === today.toDateString();
+    const isTomorrow = matchDate.toDateString() === tomorrow.toDateString();
+    
+    const dateMatch = dateFilter === 'today' ? isToday : isTomorrow;
+    const premiumMatch = viewMode === 'vip' ? match.prediction?.is_premium : !match.prediction?.is_premium;
+    
+    console.log('Match:', match.home_team.team_name, 'Date:', matchDate.toDateString(), 'Today:', today.toDateString(), 'isToday:', isToday, 'isTomorrow:', isTomorrow, 'isPremium:', match.prediction?.is_premium);
+    
+    return dateMatch && premiumMatch;
+  });
+
+  const getTodayMatches = (isPremium: boolean) => 
+    matches.filter(m => {
+      const matchDate = new Date(m.match_date);
+      const today = new Date();
+      return matchDate.toDateString() === today.toDateString() && m.prediction?.is_premium === isPremium;
+    }).length;
+
+  const getTomorrowMatches = (isPremium: boolean) => 
+    matches.filter(m => {
+      const matchDate = new Date(m.match_date);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return matchDate.toDateString() === tomorrow.toDateString() && m.prediction?.is_premium === isPremium;
+    }).length;
+
+  const freeMatchesCount = dateFilter === 'today' ? getTodayMatches(false) : getTomorrowMatches(false);
+  const vipMatchesCount = dateFilter === 'today' ? getTodayMatches(true) : getTomorrowMatches(true);
+
   return (
     <main className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -42,13 +81,25 @@ export default function Home() {
                 <p className="text-xs text-gray-500">Expert Football Predictions</p>
               </div>
             </div>
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 rounded-lg font-bold hover:from-amber-600 hover:to-orange-600 transition shadow-md flex items-center space-x-2"
-            >
-              <span>👑</span>
-              <span>Upgrade to VIP</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              {viewMode === 'free' ? (
+                <button
+                  onClick={() => setViewMode('vip')}
+                  className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 rounded-lg font-bold hover:from-amber-600 hover:to-orange-600 transition shadow-md flex items-center space-x-2"
+                >
+                  <span>👑</span>
+                  <span>View VIP Games ({vipMatchesCount})</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setViewMode('free')}
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-2.5 rounded-lg font-bold hover:from-blue-700 hover:to-blue-800 transition shadow-md flex items-center space-x-2"
+                >
+                  <span>⚽</span>
+                  <span>View Free Games ({freeMatchesCount})</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -57,17 +108,25 @@ export default function Home() {
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex space-x-8 text-sm">
-            <button className="py-4 border-b-2 border-blue-600 text-blue-600 font-semibold">
+            <button 
+              onClick={() => setDateFilter('today')}
+              className={`py-4 border-b-2 font-semibold transition ${
+                dateFilter === 'today' 
+                  ? 'border-blue-600 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-900'
+              }`}
+            >
               Today's Matches
             </button>
-            <button className="py-4 text-gray-500 hover:text-gray-900 transition">
+            <button 
+              onClick={() => setDateFilter('tomorrow')}
+              className={`py-4 border-b-2 font-semibold transition ${
+                dateFilter === 'tomorrow' 
+                  ? 'border-blue-600 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-900'
+              }`}
+            >
               Tomorrow
-            </button>
-            <button className="py-4 text-gray-500 hover:text-gray-900 transition">
-              All Predictions
-            </button>
-            <button className="py-4 text-gray-500 hover:text-gray-900 transition">
-              Statistics
             </button>
           </div>
         </div>
@@ -183,11 +242,14 @@ export default function Home() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Today's Predictions</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            {dateFilter === 'today' ? "Today's" : "Tomorrow's"} {viewMode === 'free' ? "Free" : "VIP"} Predictions
+          </h2>
           <p className="text-gray-600">
-            Professional match analysis and expert predictions for today's fixtures. 
-            Free predictions show matches with moderate confidence, while VIP members get access 
-            to our highest confidence predictions (75%+) with proven accuracy.
+            {viewMode === 'free' 
+              ? "Free predictions with moderate confidence levels. Upgrade to VIP for high-confidence predictions (75%+)."
+              : "Premium predictions with 75%+ confidence levels. Unlock with VIP access for just KES 100 per day."
+            }
           </p>
         </div>
 
@@ -196,15 +258,33 @@ export default function Home() {
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Loading predictions...</p>
           </div>
-        ) : matches.length === 0 ? (
+        ) : filteredMatches.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="text-6xl mb-4">📅</div>
-            <p className="text-xl text-gray-900 mb-2 font-semibold">No matches scheduled for today</p>
-            <p className="text-sm text-gray-500">Check back tomorrow for new predictions</p>
+            <div className="text-6xl mb-4">
+              {viewMode === 'free' ? '📅' : '👑'}
+            </div>
+            <p className="text-xl text-gray-900 mb-2 font-semibold">
+              No {viewMode} matches available {dateFilter === 'today' ? 'today' : 'tomorrow'}
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              {viewMode === 'free'
+                ? 'Check the VIP section for premium predictions'
+                : 'Check back later for premium predictions'
+              }
+            </p>
+            {viewMode === 'free' && vipMatchesCount > 0 && (
+              <button
+                onClick={() => setViewMode('vip')}
+                className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-3 rounded-lg font-bold hover:from-amber-600 hover:to-orange-600 transition shadow-md inline-flex items-center space-x-2"
+              >
+                <span>👑</span>
+                <span>View {vipMatchesCount} VIP Games</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid gap-4">
-            {matches.map((match) => (
+            {filteredMatches.map((match) => (
               <MatchCard
                 key={match.id}
                 match={match}
